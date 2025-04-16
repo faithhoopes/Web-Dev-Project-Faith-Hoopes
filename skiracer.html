@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpine Ski Racer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 1px solid #000;
+            display: block; /* Prevents extra space below canvas */
+            margin: auto; /* Centers canvas if body flex isn't sufficient */
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Game States
+        const START_SCREEN = 0;
+        const PLAYING = 1;
+        const GAME_OVER = 2;
+        let gameState = START_SCREEN;
+
+        // Game Variables
+        let skier;
+        let gates = [];
+        let score = 0;
+        let distance = 0;
+        let gameSpeed = 0; // Set by difficulty
+        let difficultySelected = false;
+
+        // Game Settings
+        const canvasWidth = 600;
+        const canvasHeight = 800;
+        const skierWidth = 20;
+        const skierHeight = 40;
+        const skierYPosition = canvasHeight - 100; // Fixed Y position for the skier
+        const skierMoveSpeed = 10;
+        const gateWidth = 100; // The gap the skier must pass through
+        const poleWidth = 15;  // Width of the flag poles
+        const gateColor = ['red', 'blue']; // Alternating gate colors
+        const gateSpawnFrequency = 80; // Lower number = more frequent gates
+        const gatePassBonus = 100;
+
+        // Difficulty Levels
+        const difficulties = {
+            beginner: { name: "Beginner", speed: 3, color: 'green' },
+            intermediate: { name: "Intermediate", speed: 5, color: 'orange' },
+            advanced: { name: "Advanced", speed: 8, color: 'red' }
+        };
+
+        // p5.js setup function - runs once at the beginning
+        function setup() {
+            createCanvas(canvasWidth, canvasHeight);
+            resetGame(); // Initialize game variables
+            textAlign(CENTER, CENTER);
+            textSize(20);
+            noStroke(); // Default to no outlines for shapes
+        }
+
+        // p5.js draw function - runs continuously
+        function draw() {
+            background(240, 248, 255); // Light blue sky / snow color
+
+            // Draw based on game state
+            if (gameState === START_SCREEN) {
+                displayStartScreen();
+            } else if (gameState === PLAYING) {
+                playGame();
+            } else if (gameState === GAME_OVER) {
+                displayGameOverScreen();
+            }
+        }
+
+        // --- Game State Functions ---
+
+        function displayStartScreen() {
+            fill(0);
+            textSize(40);
+            text("Alpine Ski Racer", width / 2, height / 4);
+
+            textSize(20);
+            text("Select Difficulty:", width / 2, height / 2 - 50);
+            text("Use Left/Right Arrow Keys to Move", width / 2, height - 50);
+
+            // Draw difficulty buttons
+            let buttonY = height / 2;
+            let buttonHeight = 50;
+            let buttonWidth = 150;
+            let spacing = 70;
+
+            // Beginner Button
+            fill(difficulties.beginner.color);
+            rect(width / 2 - buttonWidth / 2, buttonY, buttonWidth, buttonHeight, 5);
+            fill(255);
+            text(difficulties.beginner.name, width / 2, buttonY + buttonHeight / 2);
+
+            // Intermediate Button
+            fill(difficulties.intermediate.color);
+            rect(width / 2 - buttonWidth / 2, buttonY + spacing, buttonWidth, buttonHeight, 5);
+            fill(255);
+            text(difficulties.intermediate.name, width / 2, buttonY + spacing + buttonHeight / 2);
+
+            // Advanced Button
+            fill(difficulties.advanced.color);
+            rect(width / 2 - buttonWidth / 2, buttonY + spacing * 2, buttonWidth, buttonHeight, 5);
+            fill(255);
+            text(difficulties.advanced.name, width / 2, buttonY + spacing * 2 + buttonHeight / 2);
+        }
+
+        function playGame() {
+            // Update game elements
+            updateSkier();
+            updateGates();
+            spawnGates();
+            checkCollisions();
+
+            // Update score based on distance
+            distance += gameSpeed;
+            score = Math.floor(distance / 10); // Basic score from distance
+
+            // Draw game elements
+            drawBackgroundDetails(); // Simple trees/lines
+            drawGates();
+            drawSkier();
+            displayScore();
+        }
+
+        function displayGameOverScreen() {
+            fill(0, 0, 0, 150); // Semi-transparent overlay
+            rect(0, 0, width, height);
+
+            fill(255, 0, 0);
+            textSize(50);
+            text("GAME OVER", width / 2, height / 3);
+
+            fill(255);
+            textSize(30);
+            text("Final Score: " + score, width / 2, height / 2);
+            text("Distance: " + Math.floor(distance / 10), width / 2, height / 2 + 40);
+
+            textSize(20);
+            text("Click or Press Enter to Restart", width / 2, height * 2 / 3);
+        }
+
+        // --- Update Functions ---
+
+        function updateSkier() {
+            // Handle keyboard input for movement
+            if (keyIsDown(LEFT_ARROW)) {
+                skier.x -= skierMoveSpeed;
+            }
+            if (keyIsDown(RIGHT_ARROW)) {
+                skier.x += skierMoveSpeed;
+            }
+
+            // Keep skier within canvas bounds
+            skier.x = constrain(skier.x, skierWidth / 2, width - skierWidth / 2);
+        }
+
+        function updateGates() {
+            for (let i = gates.length - 1; i >= 0; i--) {
+                gates[i].y += gameSpeed;
+
+                // Check for passing a gate
+                if (!gates[i].passed && gates[i].y > skier.y + skierHeight / 2) {
+                    // Check if skier was within the gate gap when it passed
+                    let gateLeftBound = gates[i].x - gateWidth / 2;
+                    let gateRightBound = gates[i].x + gateWidth / 2;
+                    if (skier.x > gateLeftBound && skier.x < gateRightBound) {
+                        score += gatePassBonus;
+                        gates[i].passed = true; // Mark as passed so bonus isn't awarded again
+                        // console.log("Passed gate! Score:", score); // Debug log
+                    } else {
+                         // If the gate passed the skier's Y level and they weren't inside, they missed it.
+                        // This counts as a collision/game over in many ski games.
+                        console.log("Missed Gate!");
+                        gameOver();
+                    }
+                }
+
+
+                // Remove gates that are off-screen (bottom)
+                if (gates[i].y > height + 50) { // Add buffer
+                    gates.splice(i, 1);
+                }
+            }
+        }
+
+
+        function spawnGates() {
+            // Add new gates periodically based on frame count and frequency
+            // Also check if the last gate is far enough down to spawn a new one
+             if (frameCount % gateSpawnFrequency === 0 || gates.length === 0 || gates[gates.length - 1].y > 150) {
+                 // Only spawn if the last gate is sufficiently far down OR if it's time based on frequency
+                 if (gates.length === 0 || gates[gates.length - 1].y > 150) {
+                    let gateX = random(gateWidth / 2 + poleWidth, width - gateWidth / 2 - poleWidth);
+                    let nextColor = gateColor[gates.length % gateColor.length]; // Alternate colors
+                    gates.push({
+                        x: gateX,
+                        y: -50, // Start above the screen
+                        color: nextColor,
+                        passed: false, // Track if passed for scoring
+                        hit: false // Track if hit for game over
+                    });
+                 }
+            }
+        }
+
+        function checkCollisions() {
+            // Check collision with gate poles
+            for (let gate of gates) {
+                // Only check collision for gates near the skier's Y level
+                if (abs(gate.y - skier.y) < skierHeight / 2 + 5) { // 5 is pole height threshold approx
+                    let pole1Left = gate.x - gateWidth / 2 - poleWidth;
+                    let pole1Right = gate.x - gateWidth / 2;
+                    let pole2Left = gate.x + gateWidth / 2;
+                    let pole2Right = gate.x + gateWidth / 2 + poleWidth;
+
+                    let skierLeft = skier.x - skierWidth / 2;
+                    let skierRight = skier.x + skierWidth / 2;
+
+                    // Check overlap with left pole
+                    if (skierRight > pole1Left && skierLeft < pole1Right) {
+                        console.log("Hit left pole!");
+                        gameOver();
+                        return; // Exit loop once collision detected
+                    }
+                    // Check overlap with right pole
+                    if (skierRight > pole2Left && skierLeft < pole2Right) {
+                        console.log("Hit right pole!");
+                        gameOver();
+                        return; // Exit loop once collision detected
+                    }
+                }
+            }
+        }
+
+
+        // --- Drawing Functions ---
+
+        function drawSkier() {
+            fill(0, 0, 200); // Blue skier
+            // Simple rectangle body
+            rectMode(CENTER);
+            rect(skier.x, skier.y, skierWidth, skierHeight, 3);
+            // Simple circle head
+            fill(255, 224, 189); // Skin tone
+            ellipse(skier.x, skier.y - skierHeight / 2 + 5 , skierWidth * 0.8, skierWidth * 0.8);
+             // Skis (lines or thin rectangles)
+            stroke(0);
+            strokeWeight(4);
+            line(skier.x - skierWidth/2, skier.y + skierHeight/2, skier.x - skierWidth/2, skier.y + skierHeight/2 + 15);
+            line(skier.x + skierWidth/2, skier.y + skierHeight/2, skier.x + skierWidth/2, skier.y + skierHeight/2 + 15);
+            noStroke();
+            rectMode(CORNER); // Reset rectMode
+        }
+
+        function drawGates() {
+            rectMode(CORNER); // Poles are easier with corner mode
+            for (let gate of gates) {
+                fill(gate.color);
+                // Left pole (flag)
+                rect(gate.x - gateWidth / 2 - poleWidth, gate.y - 20, poleWidth, 40);
+                // Right pole (flag)
+                rect(gate.x + gateWidth / 2, gate.y - 20, poleWidth, 40);
+
+                 // Optional: Draw thin line for the pole itself if needed
+                // stroke(100);
+                // strokeWeight(2);
+                // line(gate.x - gateWidth/2 - poleWidth/2, 0, gate.x - gateWidth/2 - poleWidth/2, gate.y + 20);
+                // line(gate.x + gateWidth/2 + poleWidth/2, 0, gate.x + gateWidth/2 + poleWidth/2, gate.y + 20);
+                // noStroke();
+            }
+             rectMode(CORNER); // Reset rectMode just in case
+        }
+
+
+        function displayScore() {
+            fill(0);
+            textSize(24);
+            textAlign(LEFT, TOP);
+            text("Score: " + score, 20, 20);
+            text("Distance: " + Math.floor(distance / 10), 20, 50); // Display distance score
+            textAlign(CENTER, CENTER); // Reset alignment
+        }
+
+        function drawBackgroundDetails() {
+            // Add some simple details like lines suggesting slope or distant trees
+            stroke(200, 220, 255); // Light grey/blue lines
+            strokeWeight(1);
+            for(let i = 0; i < 10; i++) {
+                let lineY = (frameCount * gameSpeed * 0.1 + i * 100) % height; // Slow moving lines
+                line(0, lineY, width, lineY);
+            }
+
+            // Simple triangle trees (optional)
+            fill(34, 139, 34); // Forest green
+            noStroke();
+             // Draw a few static trees on the sides
+            drawTree(50, 200);
+            drawTree(width - 70, 400);
+            drawTree(80, 600);
+            drawTree(width - 100, 750);
+        }
+
+        function drawTree(x, y) {
+             triangle(x, y, x - 30, y + 80, x + 30, y + 80);
+             triangle(x, y+40, x - 25, y + 100, x + 25, y + 100);
+             fill(139, 69, 19); // Brown trunk
+             rectMode(CENTER)
+             rect(x, y+110, 15, 20);
+             rectMode(CORNER); // Reset
+             fill(34, 139, 34); // Back to green
+        }
+
+        // --- Game Control Functions ---
+
+        function gameOver() {
+            gameState = GAME_OVER;
+             // Optional: Add a sound effect here if using p5.sound
+             // crashSound.play();
+        }
+
+        function resetGame() {
+            skier = {
+                x: width / 2,
+                y: skierYPosition // Keep skier at fixed Y
+            };
+            gates = [];
+            score = 0;
+            distance = 0;
+            frameCount = 0; // Reset frameCount for consistent spawning if needed
+            difficultySelected = false; // Reset difficulty flag
+            gameState = START_SCREEN; // Go back to start screen
+        }
+
+        // --- Input Handling ---
+
+        function keyPressed() {
+            if (gameState === GAME_OVER && keyCode === ENTER) {
+                resetGame();
+            }
+            // Arrow key movement is handled in updateSkier() via keyIsDown() for smoother continuous movement
+        }
+
+        function mousePressed() {
+            if (gameState === START_SCREEN) {
+                let buttonY = height / 2;
+                let buttonHeight = 50;
+                let buttonWidth = 150;
+                let spacing = 70;
+                let btnX = width / 2 - buttonWidth / 2;
+
+                // Check Beginner button click
+                if (mouseX > btnX && mouseX < btnX + buttonWidth && mouseY > buttonY && mouseY < buttonY + buttonHeight) {
+                    gameSpeed = difficulties.beginner.speed;
+                    difficultySelected = true;
+                    gameState = PLAYING;
+                }
+                // Check Intermediate button click
+                else if (mouseX > btnX && mouseX < btnX + buttonWidth && mouseY > buttonY + spacing && mouseY < buttonY + spacing + buttonHeight) {
+                    gameSpeed = difficulties.intermediate.speed;
+                    difficultySelected = true;
+                    gameState = PLAYING;
+                }
+                // Check Advanced button click
+                else if (mouseX > btnX && mouseX < btnX + buttonWidth && mouseY > buttonY + spacing * 2 && mouseY < buttonY + spacing * 2 + buttonHeight) {
+                    gameSpeed = difficulties.advanced.speed;
+                    difficultySelected = true;
+                    gameState = PLAYING;
+                }
+            } else if (gameState === GAME_OVER) {
+                resetGame(); // Allow restarting by clicking too
+            }
+        }
+
+    </script>
+</body>
+</html>
